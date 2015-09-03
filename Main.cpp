@@ -97,12 +97,24 @@ int main(int argc, char *argv[])
 
 	while(1)
 	{
-		DWORD key = FetchKeyCode();
+		int key = (int)FetchKeyCode();
+		if (key >= 8 && key <= 126) 
+		{
+			char c = VKtoCHAR(key);
+			std::cout << c;
+			Sleep(75);
+		}else if( key > 126)
+		{
+			determineKey(key);
+			Sleep(75);
+		}
+		/*DWORD key = FetchKeyCode();
 		if (key >= 8 && key <= 222)
 		{
 			determineKey(key);
 		}
-		
+*/
+		Sleep(17);
 	}
 	return 0;
 }
